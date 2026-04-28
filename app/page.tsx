@@ -27,6 +27,7 @@ import SpendChart from "@/components/SpendChart";
 import FunnelBar from "@/components/FunnelBar";
 import ObjectiveTable from "@/components/ObjectiveTable";
 import ChannelStatus from "@/components/ChannelStatus";
+import StalenessBanner from "@/components/StalenessBanner";
 
 export const revalidate = 600; // 10 min ISR
 
@@ -58,8 +59,18 @@ export default async function OverviewPage() {
   const metaHasData = channelHasData(filtered, "meta");
   const googleHasData = channelHasData(filtered, "google");
 
+  // Channels we expect to be reporting today. Google is suppressed in
+  // the staleness banner until its pipeline has data — until then, an
+  // "expected but never run" warning would just be noise.
+  const expectedChannels: ("meta" | "google")[] = googleHasData
+    ? ["meta", "google"]
+    : ["meta"];
+
   return (
     <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
+      {/* Staleness banner — surfaces only when something is non-fresh */}
+      <StalenessBanner status={runStatus} channelsExpected={expectedChannels} />
+
       {/* Header */}
       <header className="flex flex-col gap-3 mb-6 sm:mb-8">
         <div className="flex flex-col gap-1">

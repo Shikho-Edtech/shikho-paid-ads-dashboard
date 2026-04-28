@@ -11,3 +11,9 @@ dist/
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Secrets — never commit. Even an accidental `cp ~/Downloads/svc.json .`
+# must be caught.
+*creds*.json
+service-account*.json
+client_secret*.json
