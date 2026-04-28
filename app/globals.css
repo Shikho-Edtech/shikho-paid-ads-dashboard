@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --shikho-indigo-600: #304090;
+  --shikho-indigo-700: #252F73;
+  --shikho-magenta-500: #C02080;
+  --shikho-sunrise-500: #E0A010;
+  --channel-meta: #1877F2;
+  --channel-google: #4285F4;
+  --canvas: #F4F5FA;
+  --paper: #FFFFFF;
+  --ink-50: #FAFAFB;
+  --ink-100: #F0F1F4;
+  --ink-200: #DCDFE6;
+  --ink-300: #B6BBC8;
+  --ink-500: #646A7E;
+  --ink-700: #2F3344;
+  --ink-900: #11142A;
+}
+
+html, body {
+  background: var(--canvas);
+  color: var(--ink-900);
+  font-family: "Poppins", "Hind Siliguri", -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Visible focus ring globally — never disable per-component. */
+*:focus-visible {
+  outline: 2px solid var(--shikho-indigo-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Tabular numerals on data values so columns line up. */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
