@@ -70,8 +70,16 @@ async function probeSheet(spreadsheetId: string, tab: string) {
 }
 
 export async function GET() {
-  const metaSheetId = process.env.META_SPREADSHEET_ID || "";
-  const googleSheetId = process.env.GOOGLE_ADS_SPREADSHEET_ID || "";
+  // Accept either canonical name or the ADS-suffixed variant for back-compat.
+  const metaSheetId =
+    process.env.META_SPREADSHEET_ID ||
+    process.env.META_ADS_SPREADSHEET_ID ||
+    process.env.ADS_SPREADSHEET_ID ||
+    "";
+  const googleSheetId =
+    process.env.GOOGLE_ADS_SPREADSHEET_ID ||
+    process.env.GOOGLE_SPREADSHEET_ID ||
+    "";
 
   const [metaProbe, googleProbe, metaInsights, googleInsights, runStatus] =
     await Promise.all([

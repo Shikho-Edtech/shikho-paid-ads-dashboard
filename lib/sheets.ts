@@ -170,8 +170,28 @@ function googleRowToInsight(r: Record<string, any>): UnifiedInsight {
 
 // ─── Public entrypoints ────────────────────────────────────────────
 
+// Resolve sheet IDs with fallback. CONTRACTS.md §7.3 names them
+// META_SPREADSHEET_ID and GOOGLE_ADS_SPREADSHEET_ID, but earlier
+// deployments may have set META_ADS_SPREADSHEET_ID. Accept either.
+function metaSheetId(): string {
+  return (
+    process.env.META_SPREADSHEET_ID ||
+    process.env.META_ADS_SPREADSHEET_ID ||
+    process.env.ADS_SPREADSHEET_ID ||
+    ""
+  );
+}
+
+function googleSheetId(): string {
+  return (
+    process.env.GOOGLE_ADS_SPREADSHEET_ID ||
+    process.env.GOOGLE_SPREADSHEET_ID ||
+    ""
+  );
+}
+
 export async function getMetaInsights(): Promise<UnifiedInsight[]> {
-  const id = process.env.META_SPREADSHEET_ID || "";
+  const id = metaSheetId();
   // Tab name must match what the Meta pipeline writes; v2.1 = Raw_Insights
   // (totals + daily merged on the same tab).
   const rows = await readTab(id, "Raw_Insights");
@@ -179,7 +199,7 @@ export async function getMetaInsights(): Promise<UnifiedInsight[]> {
 }
 
 export async function getGoogleInsights(): Promise<UnifiedInsight[]> {
-  const id = process.env.GOOGLE_ADS_SPREADSHEET_ID || "";
+  const id = googleSheetId();
   const rows = await readTab(id, "Raw_Insights");
   return rowsToObjects(rows).map(googleRowToInsight).filter((i) => i.date);
 }
@@ -199,8 +219,8 @@ export async function getAllInsights(): Promise<UnifiedInsight[]> {
 
 export async function getRunStatus(): Promise<RunStatus> {
   const [metaRows, googleRows] = await Promise.all([
-    readTab(process.env.META_SPREADSHEET_ID || "", "Analysis_Log"),
-    readTab(process.env.GOOGLE_ADS_SPREADSHEET_ID || "", "Analysis_Log"),
+    readTab(metaSheetId(), "Analysis_Log"),
+    readTab(googleSheetId(), "Analysis_Log"),
   ]);
 
   function latest(rows: any[][]): { at: string | null; status: string | null } {
