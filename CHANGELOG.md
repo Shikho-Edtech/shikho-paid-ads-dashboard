@@ -1,5 +1,8 @@
 # Changelog
 
+## 2026-04-29 — v0.3: pure-numbers view, no styled components
+Stripped every decorative component (KpiCard, SpendChart, FunnelBar, ObjectiveTable, HierarchyExplorer, DateRangePicker, ChannelStatus, StalenessBanner) — deleted from `components/` entirely. Replaced with a single page of dense statistical tables: headline summary, spend distribution math (mean / median / p25/75/95 / stddev / coefficient-of-variation / Gini / top-decile concentration), platform × funnel, platform × objective, top 30 campaigns / ad groups / ads with ratio columns (CPM, CTR, CPA), daily series with side-panel distribution stats. New `lib/stats.ts` with sum/mean/median/percentile/stddev/cv/gini/topShare/summarize helpers. Date range via simple inline `?days=N` URL links — no picker component. Auth gate stays. Tabular numerals throughout. ~600 lines total, no recharts dependency on this page.
+
 ## 2026-04-29 — v0.2: real data + USD + hierarchy explorer + date range
 First production-data render. Three structural changes shipped together:
 
