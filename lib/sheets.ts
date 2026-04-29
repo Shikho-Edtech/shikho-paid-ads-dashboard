@@ -104,13 +104,15 @@ function parseActionsJson(raw: any): Array<{ action_type: string; value: number 
   }
 }
 
+// CONTRACT: Meta pipeline writes Raw_Insights with these EXACT column
+// headers (see meta-ads-pipeline/src/sheets.py::RAW_INSIGHTS_HEADERS).
+// Renaming any of these is a CONTRACTS.md §6.1 lockstep change.
 function metaRowToInsight(r: Record<string, any>): UnifiedInsight {
-  const objective = String(r["objective"] || r["Objective"] || "").trim();
-  const date =
-    String(r["date_start"] || r["Date Start"] || r["date"] || "").slice(0, 10) || "";
+  const objective = String(r["Objective"] || "").trim();
+  const date = String(r["Date (BDT)"] || "").slice(0, 10);
 
-  const actions = parseActionsJson(r["actions"] ?? r["Actions"]);
-  const action_values = parseActionsJson(r["action_values"] ?? r["Action Values"]);
+  const actions = parseActionsJson(r["Actions (JSON)"]);
+  const action_values = parseActionsJson(r["Action Values (JSON)"]);
   const conversions = actions
     .filter((a) => META_CONVERSION_ACTIONS.has(a.action_type))
     .reduce((s, a) => s + a.value, 0);
@@ -121,13 +123,17 @@ function metaRowToInsight(r: Record<string, any>): UnifiedInsight {
   return {
     channel: "meta",
     date,
-    campaign_id: String(r["campaign_id"] || r["Campaign ID"] || ""),
-    campaign_name: String(r["campaign_name"] || r["Campaign Name"] || ""),
+    campaign_id: String(r["Campaign ID"] || ""),
+    campaign_name: String(r["Campaign Name"] || ""),
+    ad_group_id: String(r["AdSet ID"] || ""),
+    ad_group_name: String(r["AdSet Name"] || ""),
+    ad_id: String(r["Ad ID"] || ""),
+    ad_name: String(r["Ad Name"] || ""),
     objective,
     funnel_stage: objectiveToFunnel(objective, "meta"),
-    spend: num(r["spend"] ?? r["Spend"]),
-    impressions: num(r["impressions"] ?? r["Impressions"]),
-    clicks: num(r["clicks"] ?? r["Clicks"]),
+    spend: num(r["Spend (USD)"]),
+    impressions: num(r["Impressions"]),
+    clicks: num(r["Clicks"]),
     conversions,
     conversion_value,
   };
@@ -135,33 +141,30 @@ function metaRowToInsight(r: Record<string, any>): UnifiedInsight {
 
 // ─── Google-side mappers ───────────────────────────────────────────
 
-// Google Ads pipeline writes Raw_Insights with cost in BDT (already
-// converted from micros by the pipeline). Conversion fields are flat
-// columns (conversions, conversions_value) — no JSON parsing needed.
+// CONTRACT: Google Ads pipeline writes Raw_Insights with these EXACT
+// column headers (see google-ads-pipeline/src/sheets.py::RAW_INSIGHTS_HEADERS).
+// Renaming any of these is a CONTRACTS.md §6.1 lockstep change.
+// Cost is USD natively — pipeline converts cost_micros via micros_to_currency().
 function googleRowToInsight(r: Record<string, any>): UnifiedInsight {
-  const objective = String(
-    r["advertising_channel_type"] ||
-      r["Advertising Channel Type"] ||
-      r["channel_type"] ||
-      "",
-  ).trim();
-  const date =
-    String(r["date"] || r["Date"] || r["segments_date"] || "").slice(0, 10) || "";
+  const objective = String(r["Channel Type"] || "").trim();
+  const date = String(r["Date"] || "").slice(0, 10);
 
   return {
     channel: "google",
     date,
-    campaign_id: String(r["campaign_id"] || r["Campaign ID"] || ""),
-    campaign_name: String(r["campaign_name"] || r["Campaign Name"] || ""),
+    campaign_id: String(r["Campaign ID"] || ""),
+    campaign_name: String(r["Campaign Name"] || ""),
+    ad_group_id: String(r["Ad Group ID"] || ""),
+    ad_group_name: String(r["Ad Group Name"] || ""),
+    ad_id: String(r["Ad ID"] || ""),
+    ad_name: String(r["Ad Name"] || ""),
     objective,
     funnel_stage: objectiveToFunnel(objective, "google"),
-    spend: num(r["cost"] ?? r["Cost"] ?? r["spend"] ?? r["Spend"]),
-    impressions: num(r["impressions"] ?? r["Impressions"]),
-    clicks: num(r["clicks"] ?? r["Clicks"]),
-    conversions: num(r["conversions"] ?? r["Conversions"]),
-    conversion_value: num(
-      r["conversions_value"] ?? r["Conversions Value"] ?? r["conversion_value"],
-    ),
+    spend: num(r["Cost (USD)"]),
+    impressions: num(r["Impressions"]),
+    clicks: num(r["Clicks"]),
+    conversions: num(r["Conversions"]),
+    conversion_value: num(r["Conversions Value"]),
   };
 }
 
@@ -204,10 +207,22 @@ export async function getRunStatus(): Promise<RunStatus> {
     const objs = rowsToObjects(rows);
     if (objs.length === 0) return { at: null, status: null };
     // Most recent row wins. Pipelines append, so the last row is newest.
+    // Both pipelines use "Run At (BDT)" + "Fetch Status" as the header
+    // names (see meta-ads-pipeline + google-ads-pipeline src/sheets.py
+    // ANALYSIS_LOG_HEADERS).
     const last = objs[objs.length - 1];
     return {
-      at: String(last["timestamp"] || last["Timestamp"] || last["run_at"] || "") || null,
-      status: String(last["fetch_status"] || last["status"] || "") || null,
+      at:
+        String(
+          last["Run At (BDT)"] ||
+            last["Run At"] ||
+            last["timestamp"] ||
+            last["run_at"] ||
+            "",
+        ) || null,
+      status:
+        String(last["Fetch Status"] || last["fetch_status"] || last["status"] || "") ||
+        null,
     };
   }
 

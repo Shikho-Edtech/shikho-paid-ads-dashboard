@@ -5,7 +5,7 @@
 import type { FunnelRow } from "@/lib/types";
 import { FUNNEL_COLOR } from "@/lib/colors";
 import { FUNNEL_LABELS } from "@/lib/funnel";
-import { fmtBDT, fmtPct } from "@/lib/aggregate";
+import { fmtUSD, fmtPct } from "@/lib/aggregate";
 
 interface Props {
   data: FunnelRow[];
@@ -36,7 +36,7 @@ export default function FunnelBar({ data }: Props) {
               width: `${(row.share * 100).toFixed(2)}%`,
               background: FUNNEL_COLOR[row.stage],
             }}
-            title={`${FUNNEL_LABELS[row.stage]}: ${fmtBDT(row.spend)} (${fmtPct(row.share)})`}
+            title={`${FUNNEL_LABELS[row.stage]}: ${fmtUSD(row.spend)} (${fmtPct(row.share)})`}
           />
         ))}
       </div>
@@ -59,7 +59,7 @@ export default function FunnelBar({ data }: Props) {
             </div>
             <div className="flex items-baseline gap-2 flex-shrink-0">
               <span className="text-sm font-semibold tabular-nums text-ink-900">
-                {fmtBDT(row.spend)}
+                {fmtUSD(row.spend)}
               </span>
               <span className="text-xs text-ink-muted tabular-nums">
                 {fmtPct(row.share)}

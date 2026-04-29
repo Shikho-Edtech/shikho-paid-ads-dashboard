@@ -3,7 +3,7 @@
 
 import type { ObjectiveRow } from "@/lib/types";
 import { CHANNEL_COLOR, CHANNEL_LABEL, FUNNEL_COLOR } from "@/lib/colors";
-import { fmtBDT, fmtNum } from "@/lib/aggregate";
+import { fmtUSD, fmtNum } from "@/lib/aggregate";
 
 interface Props {
   rows: ObjectiveRow[];
@@ -58,13 +58,13 @@ export default function ObjectiveTable({ rows, limit = 12 }: Props) {
                 </span>
               </td>
               <td className="py-2 px-3 text-right tabular-nums font-semibold">
-                {fmtBDT(r.spend)}
+                {fmtUSD(r.spend)}
               </td>
               <td className="py-2 px-3 text-right tabular-nums">
                 {fmtNum(r.conversions)}
               </td>
               <td className="py-2 pl-3 text-right tabular-nums text-ink-secondary">
-                {r.cpa > 0 ? fmtBDT(r.cpa) : "—"}
+                {r.cpa > 0 ? fmtUSD(r.cpa) : "—"}
               </td>
             </tr>
           ))}

@@ -7,21 +7,25 @@ export type Channel = "meta" | "google";
 export type FunnelStage = "TOFU" | "MOFU" | "BOFU" | "UNKNOWN";
 
 // One row of insight data, normalized across channels.
-// Spend is BDT (both pipelines write BDT-converted values into Sheets).
+// Spend is USD (account-currency, native to both Meta and Google for
+// Shikho's accounts — no conversion at the pipeline layer).
 export interface UnifiedInsight {
   channel: Channel;
-  date: string;             // ISO YYYY-MM-DD (BDT day)
+  date: string;              // ISO YYYY-MM-DD
   campaign_id: string;
   campaign_name: string;
-  objective: string;        // raw objective from the platform (Meta) or
-                            // advertising_channel_type (Google)
+  ad_group_id: string;       // adset_id for Meta, ad_group_id for Google
+  ad_group_name: string;
+  ad_id: string;
+  ad_name: string;
+  objective: string;         // Meta: campaign objective; Google: channel_type
   funnel_stage: FunnelStage;
-  spend: number;            // BDT
+  spend: number;             // USD
   impressions: number;
   clicks: number;
-  conversions: number;      // best-effort: Meta = sum of conversion-like actions,
-                            // Google = conversions field
-  conversion_value: number; // BDT
+  conversions: number;       // Meta: sum of conversion-like actions;
+                             // Google: conversions field
+  conversion_value: number;  // USD
 }
 
 export interface KpiSummary {
@@ -46,6 +50,51 @@ export interface ObjectiveRow {
   funnel_stage: FunnelStage;
   channel: Channel;
   spend: number;
+  conversions: number;
+  cpa: number;
+}
+
+// Hierarchy aggregations — campaign → ad group → ad
+export interface CampaignRow {
+  campaign_id: string;
+  campaign_name: string;
+  channel: Channel;
+  objective: string;
+  funnel_stage: FunnelStage;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  cpa: number;
+  ctr: number;
+}
+
+export interface AdGroupRow {
+  ad_group_id: string;
+  ad_group_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  channel: Channel;
+  objective: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  cpa: number;
+}
+
+export interface AdRow {
+  ad_id: string;
+  ad_name: string;
+  ad_group_id: string;
+  ad_group_name: string;
+  campaign_id: string;
+  campaign_name: string;
+  channel: Channel;
+  objective: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
   conversions: number;
   cpa: number;
 }

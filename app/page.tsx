@@ -1,15 +1,21 @@
-// Overview — single-page v1 of the paid-ads dashboard.
+// Overview — v0.2.
 //
-// What's here:
-//   - KPI strip: total spend, Meta vs Google, conversions, CPA, ROAS
-//   - Daily spend stacked chart (Meta + Google)
-//   - Funnel-stage spend breakdown
-//   - Top objectives table
+// Reads `?days=N` (preset) or `?start=YYYY-MM-DD&end=YYYY-MM-DD` (custom)
+// from the URL. Falls back to trailing 30 days. Server-side ISR (10 min).
 //
-// Data: server-side read of Raw_Insights from the Meta sheet + Google
-// sheet via lib/sheets.ts. ISR 10 min so we don't hammer the Sheets API.
+// Sections:
+//   - StalenessBanner (per-channel, surfaces only when stale)
+//   - DateRangePicker (URL-state driven)
+//   - KPI strip (total / Meta / Google / combined)
+//   - Results strip (conversions / CPA / ROAS)
+//   - Daily spend stacked chart
+//   - Funnel-stage mix (rule-derived from objective until Phase 2 classifier)
+//   - HierarchyExplorer — Campaign / Ad Group / Ad drill-down with platform
+//     and objective filters. The verification-it-all-works view.
+//   - ChannelStatus chips at the bottom
 //
-// Date window: trailing 30 days (BDT). Phase 4 will add a date picker.
+// Currency: USD throughout. Both Meta and Google return account-currency
+// values natively for Shikho (USD).
 
 import { getAllInsights, getRunStatus, channelHasData } from "@/lib/sheets";
 import {
@@ -18,8 +24,10 @@ import {
   dailySpend,
   objectiveBreakdown,
   funnelBreakdown,
-  fmtBDT,
+  fmtUSD,
   fmtNum,
+  daysAgo,
+  today,
 } from "@/lib/aggregate";
 import { CHANNEL_COLOR } from "@/lib/colors";
 import KpiCard from "@/components/KpiCard";
@@ -28,25 +36,40 @@ import FunnelBar from "@/components/FunnelBar";
 import ObjectiveTable from "@/components/ObjectiveTable";
 import ChannelStatus from "@/components/ChannelStatus";
 import StalenessBanner from "@/components/StalenessBanner";
+import HierarchyExplorer from "@/components/HierarchyExplorer";
+import DateRangePicker from "@/components/DateRangePicker";
 
 export const revalidate = 600; // 10 min ISR
 
-function isoDay(d: Date): string {
-  return d.toISOString().slice(0, 10);
+interface PageProps {
+  searchParams: Promise<{ days?: string; start?: string; end?: string }>;
 }
 
-export default async function OverviewPage() {
+export default async function OverviewPage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+
+  // Resolve the date window from URL params.
+  // Priority: explicit start/end > days preset > default 30d.
+  let windowStart: string;
+  let windowEnd: string;
+  let appliedDays: number | null = null;
+
+  if (sp.start && sp.end) {
+    windowStart = sp.start;
+    windowEnd = sp.end;
+  } else {
+    const n = sp.days ? Math.max(1, Math.min(365, parseInt(sp.days, 10) || 30)) : 30;
+    windowStart = daysAgo(n);
+    windowEnd = today();
+    appliedDays = n;
+  }
+
   const [allInsights, runStatus] = await Promise.all([
     getAllInsights(),
     getRunStatus(),
   ]);
 
-  // Trailing 30 days, in BDT (Sheets cells are already BDT-converted by
-  // both pipelines per the cross-pipeline rule). We compute the window
-  // server-side using UTC math; a one-day-of-overlap is fine for v1.
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const filtered = filterByDateRange(allInsights, isoDay(windowStart), isoDay(now));
+  const filtered = filterByDateRange(allInsights, windowStart, windowEnd);
 
   const kpis = summarizeKpis(filtered);
   const daily = dailySpend(filtered);
@@ -59,68 +82,68 @@ export default async function OverviewPage() {
   const metaHasData = channelHasData(filtered, "meta");
   const googleHasData = channelHasData(filtered, "google");
 
-  // Channels we expect to be reporting today. Google is suppressed in
-  // the staleness banner until its pipeline has data — until then, an
-  // "expected but never run" warning would just be noise.
   const expectedChannels: ("meta" | "google")[] = googleHasData
     ? ["meta", "google"]
     : ["meta"];
 
   return (
-    <main className="max-w-6xl mx-auto px-4 py-6 sm:py-8">
-      {/* Staleness banner — surfaces only when something is non-fresh */}
+    <main className="max-w-7xl mx-auto px-4 py-6 sm:py-8">
+      {/* Staleness banner */}
       <StalenessBanner status={runStatus} channelsExpected={expectedChannels} />
 
       {/* Header */}
       <header className="flex flex-col gap-3 mb-6 sm:mb-8">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl sm:text-3xl font-bold text-shikho-indigo-700 leading-tight">
-            Paid Ads Overview
-          </h1>
-          <p className="text-sm text-ink-secondary">
-            Cross-channel spend, funnel stage and results — last 30 days, BDT.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="flex flex-col gap-1 min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-shikho-indigo-700 leading-tight">
+              Paid Ads Overview
+            </h1>
+            <p className="text-sm text-ink-secondary">
+              Cross-channel spend, results and funnel mix — USD, account-currency from each platform.
+            </p>
+          </div>
+          <ChannelStatus
+            status={runStatus}
+            metaHasData={metaHasData}
+            googleHasData={googleHasData}
+          />
         </div>
-        <ChannelStatus
-          status={runStatus}
-          metaHasData={metaHasData}
-          googleHasData={googleHasData}
+        <DateRangePicker
+          currentDays={appliedDays}
+          currentStart={windowStart}
+          currentEnd={windowEnd}
         />
       </header>
 
-      {/* Total spend strip */}
+      {/* Spend strip */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
         <KpiCard
           label="Total Spend"
-          value={fmtBDT(kpis.total_spend)}
+          value={fmtUSD(kpis.total_spend)}
           hint={`${fmtNum(filtered.length)} insight rows`}
         />
         <KpiCard
           label="Meta Spend"
-          value={fmtBDT(kpis.meta_spend)}
+          value={fmtUSD(kpis.meta_spend)}
           hint={`${(metaShare * 100).toFixed(0)}% of total`}
           accent={CHANNEL_COLOR.meta}
           pillLabel="Meta"
         />
         <KpiCard
           label="Google Spend"
-          value={fmtBDT(kpis.google_spend)}
+          value={fmtUSD(kpis.google_spend)}
           hint={
             googleHasData
               ? `${(googleShare * 100).toFixed(0)}% of total`
-              : "pipeline not yet running"
+              : "no data in window"
           }
           accent={CHANNEL_COLOR.google}
           pillLabel="Google"
         />
         <KpiCard
           label="Combined"
-          value={fmtBDT(kpis.meta_spend + kpis.google_spend)}
-          hint={
-            googleHasData
-              ? "Meta + Google"
-              : "Meta only — Google still empty"
-          }
+          value={fmtUSD(kpis.meta_spend + kpis.google_spend)}
+          hint="Meta + Google"
         />
       </section>
 
@@ -133,15 +156,15 @@ export default async function OverviewPage() {
         />
         <KpiCard
           label="Cost per Conversion"
-          value={kpis.cpa > 0 ? fmtBDT(kpis.cpa) : "—"}
-          hint={kpis.cpa > 0 ? "Total spend ÷ total conversions" : "No conversions in window"}
+          value={kpis.cpa > 0 ? fmtUSD(kpis.cpa) : "—"}
+          hint={kpis.cpa > 0 ? "Total spend ÷ conversions" : "No conversions in window"}
         />
         <KpiCard
           label="ROAS"
           value={kpis.roas > 0 ? `${kpis.roas.toFixed(2)}x` : "—"}
           hint={
             kpis.roas > 0
-              ? `${fmtBDT(kpis.total_conversion_value)} / ${fmtBDT(kpis.total_spend)}`
+              ? `${fmtUSD(kpis.total_conversion_value)} / ${fmtUSD(kpis.total_spend)}`
               : "No conversion value reported"
           }
         />
@@ -154,7 +177,7 @@ export default async function OverviewPage() {
             <h2 className="text-base sm:text-lg font-semibold text-ink-900">
               Daily spend
             </h2>
-            <span className="text-xs text-ink-muted">stacked, BDT</span>
+            <span className="text-xs text-ink-muted">stacked, USD</span>
           </div>
           <SpendChart data={daily} />
         </div>
@@ -168,22 +191,27 @@ export default async function OverviewPage() {
               Funnel stage mix
             </h2>
             <p className="text-xs text-ink-muted">
-              Mapped from objective via rule set — Phase 2 classifier will
-              replace this.
+              Rule-mapped from objective — Phase 2 classifier will replace this.
             </p>
           </div>
           <FunnelBar data={funnel} />
         </div>
       </section>
 
-      {/* Top objectives */}
+      {/* Hierarchy explorer */}
+      <section className="mb-6 sm:mb-8">
+        <HierarchyExplorer rows={filtered} />
+      </section>
+
+      {/* Top objectives — kept as a quick orientation table even though
+          HierarchyExplorer covers it. Useful as a always-visible summary. */}
       <section className="mb-8">
         <div className="bg-ink-paper rounded-2xl border border-ink-100 shadow-ambient p-4 sm:p-5">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-base sm:text-lg font-semibold text-ink-900">
               Top objectives by spend
             </h2>
-            <span className="text-xs text-ink-muted">top 12</span>
+            <span className="text-xs text-ink-muted">all platforms</span>
           </div>
           <ObjectiveTable rows={objectives} limit={12} />
         </div>
@@ -191,10 +219,9 @@ export default async function OverviewPage() {
 
       {/* Footer */}
       <footer className="text-xs text-ink-muted pt-4 border-t border-ink-100 flex flex-col sm:flex-row sm:justify-between gap-2">
-        <span>Shikho Paid Ads Analytics — v0.1</span>
+        <span>Shikho Paid Ads Analytics — v0.2</span>
         <span>
-          Source: Raw_Insights from both pipeline sheets. Server-side ISR (10
-          min revalidate).
+          Source: Raw_Insights from both pipeline sheets · ISR 10 min · USD throughout
         </span>
       </footer>
     </main>

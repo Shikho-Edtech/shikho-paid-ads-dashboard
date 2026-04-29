@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import type { DailySpend } from "@/lib/types";
 import { CHANNEL_COLOR } from "@/lib/colors";
-import { fmtBDT } from "@/lib/aggregate";
+import { fmtUSD } from "@/lib/aggregate";
 
 interface Props {
   data: DailySpend[];
@@ -40,7 +40,7 @@ export default function SpendChart({ data }: Props) {
           />
           <YAxis
             tick={{ fontSize: 11, fill: "#646A7E" }}
-            tickFormatter={(v) => fmtBDT(v)}
+            tickFormatter={(v) => fmtUSD(v)}
             axisLine={false}
             tickLine={false}
             width={60}
@@ -52,7 +52,7 @@ export default function SpendChart({ data }: Props) {
               border: "1px solid #DCDFE6",
               fontSize: 12,
             }}
-            formatter={(v: number, name: string) => [fmtBDT(v), name]}
+            formatter={(v: number, name: string) => [fmtUSD(v), name]}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
           <Bar
