@@ -4,9 +4,14 @@
 
 import type { Channel, FunnelStage } from "./types";
 
+// Channel accents — Meta blue stays (matches Facebook's primary brand
+// hue). Google switches to its secondary brand red (#EA4335) instead
+// of Google blue, because Meta blue and Google blue render almost
+// indistinguishable in stacked charts. Red gives high contrast +
+// stays inside Google's official palette.
 export const CHANNEL_COLOR: Record<Channel, string> = {
   meta: "#1877F2",
-  google: "#4285F4",
+  google: "#EA4335",
 };
 
 export const CHANNEL_LABEL: Record<Channel, string> = {

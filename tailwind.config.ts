@@ -47,10 +47,12 @@ const config: Config = {
             800: "#651320", 900: "#3D0B14",
           },
         },
-        // Channel accents — Meta blue + Google blue for cross-channel views
+        // Channel accents — Meta blue + Google red. We swapped from
+        // Google blue (#4285F4) to its secondary red (#EA4335) because
+        // both blues looked nearly identical when stacked in charts.
         channel: {
           meta: "#1877F2",
-          google: "#4285F4",
+          google: "#EA4335",
         },
         // Functional neutral scale (Canvas + Paper)
         ink: {

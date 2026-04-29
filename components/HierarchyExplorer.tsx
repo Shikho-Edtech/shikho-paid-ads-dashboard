@@ -24,6 +24,7 @@ import {
   fmtNum,
 } from "@/lib/aggregate";
 import { CHANNEL_COLOR, CHANNEL_LABEL, FUNNEL_COLOR } from "@/lib/colors";
+import { objectiveLabel, objectiveLabelAny } from "@/lib/objectives";
 
 type ChannelFilter = "all" | Channel;
 type Level = "campaigns" | "adgroups" | "ads";
@@ -98,7 +99,7 @@ export default function HierarchyExplorer({
             <option value="all">All objectives</option>
             {objectives.map((o) => (
               <option key={o} value={o}>
-                {o}
+                {objectiveLabelAny(o)} ({o})
               </option>
             ))}
           </select>
@@ -237,7 +238,10 @@ function HierarchyTable({
                 <td className="py-2 px-3 text-xs">
                   <div className="flex flex-col gap-0.5">
                     <span className="font-medium text-ink-700 truncate max-w-[160px]">
-                      {row.objective || "—"}
+                      {row.objective ? objectiveLabel(row.objective, channelKey) : "—"}
+                    </span>
+                    <span className="text-[9px] text-ink-muted tabular-nums">
+                      {row.objective}
                     </span>
                     {funnelKey && (
                       <span

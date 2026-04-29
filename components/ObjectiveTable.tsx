@@ -4,6 +4,7 @@
 import type { ObjectiveRow } from "@/lib/types";
 import { CHANNEL_COLOR, CHANNEL_LABEL, FUNNEL_COLOR } from "@/lib/colors";
 import { fmtUSD, fmtNum } from "@/lib/aggregate";
+import { objectiveLabel } from "@/lib/objectives";
 
 interface Props {
   rows: ObjectiveRow[];
@@ -36,7 +37,12 @@ export default function ObjectiveTable({ rows, limit = 12 }: Props) {
           {top.map((r, i) => (
             <tr key={`${r.channel}-${r.objective}-${i}`} className="border-b border-ink-100/60">
               <td className="py-2 pr-3 font-medium text-ink-900">
-                {r.objective || "—"}
+                <div className="flex flex-col">
+                  <span>{objectiveLabel(r.objective, r.channel)}</span>
+                  <span className="text-[10px] text-ink-muted font-normal tabular-nums">
+                    {r.objective}
+                  </span>
+                </div>
               </td>
               <td className="py-2 px-3">
                 <span
