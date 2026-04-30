@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import Nav from "@/components/Nav";
 
 export const metadata: Metadata = {
   title: "Shikho Paid Ads",
@@ -28,6 +29,7 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-screen bg-brand-canvas text-ink-900 font-sans">
+        <Nav />
         {children}
       </body>
     </html>

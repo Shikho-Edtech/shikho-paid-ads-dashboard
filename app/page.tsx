@@ -17,7 +17,13 @@
 // Currency: USD throughout. Both Meta and Google return account-currency
 // values natively for Shikho (USD).
 
-import { getAllInsights, getRunStatus, channelHasData } from "@/lib/sheets";
+import {
+  getAllInsights,
+  getRunStatus,
+  channelHasData,
+  getConversionActions,
+  getConversionInsights,
+} from "@/lib/sheets";
 import {
   filterByDateRange,
   summarizeKpis,
@@ -28,6 +34,9 @@ import {
   fmtNum,
   daysAgo,
   today,
+  filterConversionsByDateRange,
+  filterPrimaryConversions,
+  sumConversions,
 } from "@/lib/aggregate";
 import { CHANNEL_COLOR } from "@/lib/colors";
 import KpiCard from "@/components/KpiCard";
@@ -64,9 +73,11 @@ export default async function OverviewPage({ searchParams }: PageProps) {
     appliedDays = n;
   }
 
-  const [allInsights, runStatus] = await Promise.all([
+  const [allInsights, runStatus, convActions, convInsightsAll] = await Promise.all([
     getAllInsights(),
     getRunStatus(),
+    getConversionActions(),
+    getConversionInsights(),
   ]);
 
   const filtered = filterByDateRange(allInsights, windowStart, windowEnd);
@@ -75,6 +86,34 @@ export default async function OverviewPage({ searchParams }: PageProps) {
   const daily = dailySpend(filtered);
   const funnel = funnelBreakdown(filtered);
   const objectives = objectiveBreakdown(filtered);
+
+  // Primary conversions (Google side) — filtered to actions where
+  // primary_for_goal=TRUE. This is what Smart Bidding sees and what
+  // we should show as the headline business KPI, NOT the inflated
+  // metrics.conversions sum that includes session_start etc.
+  const convInWindow = filterConversionsByDateRange(
+    convInsightsAll,
+    windowStart,
+    windowEnd,
+  );
+  const primaryConv = filterPrimaryConversions(convInWindow, convActions);
+  const primarySum = sumConversions(primaryConv);
+  // Headline KPI = Google primary conversions + Meta-side conversions
+  // (Meta still uses the actions[] heuristic — until Raw_Action_Events
+  // ships per the Meta audit). This understates Meta but doesn't
+  // hugely overstate like the all-conversions number did.
+  const metaConvFromInsights = filtered
+    .filter((r) => r.channel === "meta")
+    .reduce((s, r) => s + r.conversions, 0);
+  const metaConvValueFromInsights = filtered
+    .filter((r) => r.channel === "meta")
+    .reduce((s, r) => s + r.conversion_value, 0);
+  const headlineConversions = primarySum.conversions + metaConvFromInsights;
+  const headlineConvValue = primarySum.conversions_value + metaConvValueFromInsights;
+  const headlineCpa =
+    headlineConversions > 0 ? kpis.total_spend / headlineConversions : 0;
+  const headlineRoas =
+    kpis.total_spend > 0 ? headlineConvValue / kpis.total_spend : 0;
 
   const metaShare = kpis.total_spend > 0 ? kpis.meta_spend / kpis.total_spend : 0;
   const googleShare = kpis.total_spend > 0 ? kpis.google_spend / kpis.total_spend : 0;
@@ -147,24 +186,26 @@ export default async function OverviewPage({ searchParams }: PageProps) {
         />
       </section>
 
-      {/* Results strip */}
+      {/* Results strip — primary conversions (Google primary_for_goal +
+          Meta heuristic) NOT the inflated total. See /conversions for
+          the full per-action drilldown. */}
       <section className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 mb-6 sm:mb-8">
         <KpiCard
-          label="Conversions"
-          value={fmtNum(kpis.total_conversions)}
-          hint="Sum of platform-attributed conversions"
+          label="Primary Conversions"
+          value={fmtNum(headlineConversions)}
+          hint={`Google primary + Meta. Drill down on /conversions`}
         />
         <KpiCard
           label="Cost per Conversion"
-          value={kpis.cpa > 0 ? fmtUSD(kpis.cpa) : "—"}
-          hint={kpis.cpa > 0 ? "Total spend ÷ conversions" : "No conversions in window"}
+          value={headlineCpa > 0 ? fmtUSD(headlineCpa) : "—"}
+          hint={headlineCpa > 0 ? "Total spend ÷ primary conversions" : "No primary conversions"}
         />
         <KpiCard
           label="ROAS"
-          value={kpis.roas > 0 ? `${kpis.roas.toFixed(2)}x` : "—"}
+          value={headlineRoas > 0 ? `${headlineRoas.toFixed(2)}x` : "—"}
           hint={
-            kpis.roas > 0
-              ? `${fmtUSD(kpis.total_conversion_value)} / ${fmtUSD(kpis.total_spend)}`
+            headlineRoas > 0
+              ? `${fmtUSD(headlineConvValue)} / ${fmtUSD(kpis.total_spend)}`
               : "No conversion value reported"
           }
         />

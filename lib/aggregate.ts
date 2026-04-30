@@ -284,3 +284,93 @@ export function today(): string {
 export function daysAgo(n: number): string {
   return new Date(Date.now() - n * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 }
+
+// ─── Conversion-action aggregations ────────────────────────────────
+
+import type {
+  ConversionAction,
+  ConversionInsightRow,
+  ConversionActionStats,
+} from "./types";
+
+export function filterConversionsByDateRange(
+  rows: ConversionInsightRow[],
+  start: string,
+  end: string,
+): ConversionInsightRow[] {
+  return rows.filter((r) => r.date >= start && r.date <= end);
+}
+
+// Aggregate conversion insights into per-action stats. Joins to the
+// ConversionAction lookup so each row carries the human-readable name +
+// category + primary_for_goal flag. Spend cannot be cleanly attributed
+// per conversion_action because one ad fires multiple actions, so we
+// don't compute "cost per X conversion" — stick to volumes + values.
+export function byConversionAction(
+  insights: ConversionInsightRow[],
+  actions: ConversionAction[],
+): ConversionActionStats[] {
+  // Look up actions by resource_name (the join key in segments.conversion_action).
+  const byResource = new Map<string, ConversionAction>();
+  for (const a of actions) {
+    if (a.resource_name) byResource.set(a.resource_name, a);
+  }
+
+  const acc = new Map<string, ConversionActionStats>();
+  for (const r of insights) {
+    const key = r.conversion_action_resource_name;
+    if (!key) continue;
+    const action = byResource.get(key);
+    const cur =
+      acc.get(key) ||
+      ({
+        conversion_action_id: action?.conversion_action_id || key.split("/").pop() || "",
+        resource_name: key,
+        name: action?.name || "(unknown action)",
+        category: action?.category || r.conversion_action_category || "UNKNOWN",
+        primary_for_goal: action?.primary_for_goal ?? false,
+        customer_id: action?.customer_id || r.customer_id,
+        conversions: 0,
+        conversions_value: 0,
+        all_conversions: 0,
+        spend_attributed: 0,
+        cpa: 0,
+      } as ConversionActionStats);
+    cur.conversions += r.conversions;
+    cur.conversions_value += r.conversions_value;
+    cur.all_conversions += r.all_conversions;
+    acc.set(key, cur);
+  }
+  return Array.from(acc.values()).sort((a, b) => b.conversions - a.conversions);
+}
+
+// Filter conversion insights to only those whose conversion_action is
+// flagged primary_for_goal=TRUE on the platform side. This is the
+// number Smart Bidding optimizes against — and the one we want shown
+// as the headline "Conversions" KPI on the overview.
+export function filterPrimaryConversions(
+  rows: ConversionInsightRow[],
+  actions: ConversionAction[],
+): ConversionInsightRow[] {
+  const primary = new Set<string>(
+    actions.filter((a) => a.primary_for_goal).map((a) => a.resource_name),
+  );
+  return rows.filter((r) =>
+    primary.has(r.conversion_action_resource_name),
+  );
+}
+
+// Sum conversions / value across a row set. Used for the headline KPI.
+export function sumConversions(rows: ConversionInsightRow[]): {
+  conversions: number;
+  conversions_value: number;
+  all_conversions: number;
+} {
+  let conv = 0, val = 0, all = 0;
+  for (const r of rows) {
+    conv += r.conversions;
+    val += r.conversions_value;
+    all += r.all_conversions;
+  }
+  return { conversions: conv, conversions_value: val, all_conversions: all };
+}

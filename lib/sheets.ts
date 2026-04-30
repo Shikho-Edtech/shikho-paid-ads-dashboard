@@ -15,6 +15,8 @@ import type {
   Channel,
   UnifiedInsight,
   RunStatus,
+  ConversionAction,
+  ConversionInsightRow,
 } from "./types";
 import { objectiveToFunnel } from "./funnel";
 
@@ -261,4 +263,55 @@ export function channelHasData(
   channel: Channel,
 ): boolean {
   return insights.some((i) => i.channel === channel);
+}
+
+// ─── Conversion-action lookup + drill-down ─────────────────────────
+//
+// Source: Google Ads pipeline writes Raw_Conversion_Actions (one row
+// per conversion event definition) and Raw_Insights_Conversions
+// (ad × date × conversion_action with conversion-only metrics).
+//
+// Meta has actions[] JSON inside Raw_Insights — different shape; not
+// loaded here. Future: add a Meta-side equivalent once the
+// Raw_Action_Events long-format tab ships per the audit recommendation.
+
+export async function getConversionActions(): Promise<ConversionAction[]> {
+  const id = googleSheetId();
+  const rows = await readTab(id, "Raw_Conversion_Actions");
+  return rowsToObjects(rows).map((r) => ({
+    conversion_action_id: String(r["Conversion Action ID"] || ""),
+    resource_name: String(r["Resource Name"] || ""),
+    name: String(r["Name"] || ""),
+    category: String(r["Category"] || ""),
+    type: String(r["Type"] || ""),
+    status: String(r["Status"] || ""),
+    primary_for_goal: String(r["Primary For Goal"] || "").toLowerCase() === "true",
+    attribution_model: String(r["Attribution Model"] || ""),
+    customer_id: String(r["Customer ID"] || ""),
+    app_id: String(r["App ID"] || ""),
+  })).filter((a) => a.conversion_action_id);
+}
+
+export async function getConversionInsights(): Promise<ConversionInsightRow[]> {
+  const id = googleSheetId();
+  const rows = await readTab(id, "Raw_Insights_Conversions");
+  return rowsToObjects(rows).map((r) => ({
+    channel: "google" as Channel,
+    date: String(r["Date"] || "").slice(0, 10),
+    customer_id: String(r["Customer ID"] || ""),
+    campaign_id: String(r["Campaign ID"] || ""),
+    campaign_name: String(r["Campaign Name"] || ""),
+    ad_group_id: String(r["Ad Group ID"] || ""),
+    ad_id: String(r["Ad ID"] || ""),
+    ad_name: String(r["Ad Name"] || ""),
+    conversion_action_resource_name: String(r["Conversion Action Resource Name"] || ""),
+    conversion_action_category: String(r["Conversion Action Category"] || ""),
+    conversions: num(r["Conversions"]),
+    conversions_value: num(r["Conversions Value"]),
+    all_conversions: num(r["All Conversions"]),
+    all_conversions_value: num(r["All Conversions Value"]),
+    view_through_conversions: num(r["View Through Conversions"]),
+    cross_device_conversions: num(r["Cross Device Conversions"]),
+    value_per_conversion: num(r["Value Per Conversion"]),
+  })).filter((r) => r.date);
 }

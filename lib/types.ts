@@ -111,3 +111,53 @@ export interface RunStatus {
   google_last_run_at: string | null;
   google_status: string | null;
 }
+
+// ─── Conversion-action breakdown (Google Ads) ──────────────────────
+
+export interface ConversionAction {
+  conversion_action_id: string;
+  resource_name: string;
+  name: string;
+  category: string;        // PURCHASE / LEAD / SIGNUP / PAGE_VIEW / DOWNLOAD / etc.
+  type: string;            // UPLOAD_CLICKS / GOOGLE_ANALYTICS_4_* / FIREBASE_* / WEBPAGE
+  status: string;          // ENABLED / REMOVED / PAUSED / HIDDEN
+  primary_for_goal: boolean;
+  attribution_model: string;
+  customer_id: string;
+  app_id: string;
+}
+
+export interface ConversionInsightRow {
+  channel: Channel;        // always "google" for now (Meta has actions[] JSON instead)
+  date: string;
+  customer_id: string;
+  campaign_id: string;
+  campaign_name: string;
+  ad_group_id: string;
+  ad_id: string;
+  ad_name: string;
+  conversion_action_resource_name: string;  // join key to ConversionAction
+  conversion_action_category: string;       // mirror of category for cheap filters
+  conversions: number;
+  conversions_value: number;
+  all_conversions: number;
+  all_conversions_value: number;
+  view_through_conversions: number;
+  cross_device_conversions: number;
+  value_per_conversion: number;
+}
+
+// Aggregated per-action row for dashboards
+export interface ConversionActionStats {
+  conversion_action_id: string;
+  resource_name: string;
+  name: string;
+  category: string;
+  primary_for_goal: boolean;
+  customer_id: string;
+  conversions: number;
+  conversions_value: number;
+  all_conversions: number;
+  spend_attributed: number;   // spend on ads where this action fired (rough — same ad might fire multiple actions)
+  cpa: number;                // attributed spend / conversions
+}
