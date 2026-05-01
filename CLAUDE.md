@@ -2,7 +2,30 @@
 
 Project-specific rules. Layered under the global `~/.claude/CLAUDE.md` and the master-level `paid-ads-analytics/CLAUDE.md` + `paid-ads-analytics/CONTRACTS.md`.
 
-> **Read CONTRACTS.md first** for the cross-repo agreements (sheet schemas, env vars, taxonomies). This file is the per-dashboard *how we work*.
+> **Read in this order:** master `paid-ads-analytics/CONTRACTS.md` (cross-repo agreements: sheet schemas, env vars, taxonomies) → this file (how we work in this repo) → `docs/DESIGN_BRIEF.md` (page-level visual contract) → `docs/BRAND.md` (palette + forbidden patterns).
+>
+> The running history of this repo lives in three sibling files at the repo root:
+> - **`CHANGELOG.md`** — what shipped, version-tagged, terse.
+> - **`DECISIONS.md`** — tradeoffs worth remembering, with the alternatives we rejected and the rules that flow forward.
+> - **`LEARNINGS.md`** — gotchas worth pre-empting, with detection rules so the same class of bug doesn't recur.
+>
+> Update all three after any UI-touching commit. Mobile regressions ALWAYS go in `LEARNINGS.md`.
+
+## Where the design system comes from
+
+This repo's components, brand tokens, and page-level patterns mirror the companion **`shikho-organic-social-analytics/organic-social-dashboard`** because both dashboards are part of the same Shikho analytics product family — they share a primary reader, the Shikho v1.0 brand system, the 360 px mobile floor, and the data-honesty discipline. When in doubt, look there first for prior art before inventing.
+
+Imported as-is (with paid-ads adaptations noted in-place):
+- `docs/BRAND.md` — palette, type, forbidden patterns
+- `docs/DESIGN_BRIEF.md` — IA, page surface contract, components contract, the 7-perspective QA gate
+
+The four surface primitives every page composes from:
+- **`<Card>`** — paper white, ink-100 hairline, rounded-3xl, shadow-ambient. Optional `kind` accent: `observed` / `derived` / `meta` / `google`.
+- **`<SectionCard>`** — Card + header (title + subtitle + optional meta pill) + body slot.
+- **`<PageHeader>`** — page title + "Data as of …" stamp from `runStatus` + `rightSlot` (date picker, compare toggle).
+- **`<KpiCard>`** — paper → indigo-50/40 gradient, responsive text sizes, optional `delta` (signed %) + `deltaAbs` (USD), optional channel pill.
+
+Inline-styled `<div className="rounded-xl border ...">` blocks that approximate these are the failure pattern. See `LEARNINGS.md` 2026-05-02 entry.
 
 ---
 
