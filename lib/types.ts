@@ -105,6 +105,34 @@ export interface FunnelRow {
   share: number;            // 0-1
 }
 
+// ─── Spend-overview enrichments (entity tabs joined client-side) ──
+// optimization and ad_signal are platform-specific concepts:
+//   Meta optimization     = adset.optimization_goal (QUALITY_CALL, OFFSITE_CONVERSIONS, …)
+//   Google optimization   = ad_group.type / bidding strategy at ad-group level
+//   Meta ad_signal        = first conversion_specs[].action.type on the ad
+//                           (click_to_call_60s_call_end, app_custom_event, …)
+//   Google ad_signal      = ad_group_ad.ad.type (RESPONSIVE_SEARCH_AD, IMAGE_AD, …)
+// "(unknown)" means the lookup didn't find a value (entity deleted but
+// historical insight rows still reference the id).
+export interface EnrichedInsight extends UnifiedInsight {
+  campaign_bid_strategy: string;
+  optimization: string;
+  ad_signal: string;
+}
+
+// Per-bucket rollup row for the spend-overview charts.
+// `key` = dimension value, `channel` = platform owning that bucket.
+// We never merge buckets across platforms — even if both have a key
+// called "TRAFFIC", they stay separate so the UI doesn't fake parity.
+export interface SpendBucket {
+  key: string;
+  channel: Channel;
+  spend: number;
+  ads: number;        // distinct ad_ids in this bucket
+  share: number;      // 0-1 of total period spend across both platforms
+  delta?: number;     // optional Δ vs comparison period (signed USD)
+}
+
 export interface RunStatus {
   meta_last_run_at: string | null;
   meta_status: string | null;

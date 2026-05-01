@@ -374,3 +374,215 @@ export function sumConversions(rows: ConversionInsightRow[]): {
   }
   return { conversions: conv, conversions_value: val, all_conversions: all };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Spend-overview rollups
+// ─────────────────────────────────────────────────────────────────────
+import type { EnrichedInsight, SpendBucket } from "./types";
+
+// Filter helper for the enriched shape — same predicate as filterByDateRange
+// but typed for EnrichedInsight (TS doesn't widen UnifiedInsight[] callers).
+export function filterEnrichedByDateRange(
+  rows: EnrichedInsight[],
+  start: string,
+  end: string,
+): EnrichedInsight[] {
+  return rows.filter((r) => r.date >= start && r.date <= end);
+}
+
+// Group enriched rows by a chosen dimension and channel. Returns
+// SpendBuckets sorted by spend desc. `getKey` returns the dimension
+// value for a row (e.g., r.objective, r.optimization, r.ad_signal).
+// `share` is computed against the grand total across both platforms so
+// percentages always sum to 100% in the combined view.
+export function bucketBy(
+  rows: EnrichedInsight[],
+  getKey: (r: EnrichedInsight) => string,
+): SpendBucket[] {
+  const acc = new Map<string, SpendBucket & { _adIds: Set<string> }>();
+  let grand = 0;
+  for (const r of rows) {
+    const key = getKey(r) || "(blank)";
+    const k = `${r.channel}|${key}`;
+    let cur = acc.get(k);
+    if (!cur) {
+      cur = {
+        key,
+        channel: r.channel,
+        spend: 0,
+        ads: 0,
+        share: 0,
+        _adIds: new Set<string>(),
+      };
+      acc.set(k, cur);
+    }
+    cur.spend += r.spend;
+    if (r.ad_id) cur._adIds.add(r.ad_id);
+    grand += r.spend;
+  }
+  const out: SpendBucket[] = [];
+  for (const v of acc.values()) {
+    out.push({
+      key: v.key,
+      channel: v.channel,
+      spend: v.spend,
+      ads: v._adIds.size,
+      share: grand > 0 ? v.spend / grand : 0,
+    });
+  }
+  return out.sort((a, b) => b.spend - a.spend);
+}
+
+// Pair two bucket arrays (current + comparison) and attach delta. Buckets
+// not present in `compare` get delta = current.spend (treated as +full).
+// Buckets present only in `compare` are appended with negative spend.
+export function attachDelta(
+  current: SpendBucket[],
+  compare: SpendBucket[],
+): SpendBucket[] {
+  const compIdx = new Map<string, SpendBucket>();
+  for (const b of compare) compIdx.set(`${b.channel}|${b.key}`, b);
+  const seen = new Set<string>();
+  const out: SpendBucket[] = current.map((b) => {
+    const k = `${b.channel}|${b.key}`;
+    seen.add(k);
+    const prev = compIdx.get(k);
+    return { ...b, delta: b.spend - (prev?.spend || 0) };
+  });
+  // Surface dropped-off buckets too — channels stopped spending on a key.
+  for (const b of compare) {
+    const k = `${b.channel}|${b.key}`;
+    if (seen.has(k)) continue;
+    out.push({ ...b, spend: 0, ads: 0, share: 0, delta: -b.spend });
+  }
+  return out.sort(
+    (a, b) => Math.abs(b.delta || 0) - Math.abs(a.delta || 0) || b.spend - a.spend,
+  );
+}
+
+// Sum total spend for an enriched slice. Cheap — used for KPI tiles.
+export function totalSpend(rows: EnrichedInsight[]): number {
+  let s = 0;
+  for (const r of rows) s += r.spend;
+  return s;
+}
+
+// Distinct campaign IDs that had spend > 0 in the slice. Honest
+// "spending campaigns" count vs "active campaigns" which can include
+// $0-impression campaigns.
+export function spendingCampaignCount(rows: EnrichedInsight[]): number {
+  const ids = new Set<string>();
+  for (const r of rows) if (r.spend > 0 && r.campaign_id) ids.add(r.campaign_id);
+  return ids.size;
+}
+
+// Concentration: top-N campaigns' spend share. Defaults to top 5.
+// Returns NaN if rows empty.
+export function spendConcentration(rows: EnrichedInsight[], topN = 5): number {
+  const byCamp = new Map<string, number>();
+  let grand = 0;
+  for (const r of rows) {
+    if (!r.campaign_id) continue;
+    byCamp.set(r.campaign_id, (byCamp.get(r.campaign_id) || 0) + r.spend);
+    grand += r.spend;
+  }
+  if (grand <= 0) return 0;
+  const sorted = Array.from(byCamp.values()).sort((a, b) => b - a);
+  const top = sorted.slice(0, topN).reduce((s, v) => s + v, 0);
+  return top / grand;
+}
+
+// Daily spend by channel — mirrors dailySpend() above but on enriched.
+export function dailySpendEnriched(rows: EnrichedInsight[]): DailySpend[] {
+  return dailySpend(rows as unknown as UnifiedInsight[]);
+}
+
+// Comparison-period resolver. Given a current (start, end), returns the
+// equal-length immediately-prior period: (prev_start, prev_end).
+// Inclusive on both ends, ISO YYYY-MM-DD.
+export function priorPeriod(start: string, end: string): { start: string; end: string } {
+  const s = new Date(start + "T00:00:00Z");
+  const e = new Date(end + "T00:00:00Z");
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000);
+  const prevEnd = new Date(s.getTime() - 86400000);
+  const prevStart = new Date(prevEnd.getTime() - days * 86400000);
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: fmt(prevStart), end: fmt(prevEnd) };
+}
+
+// Top-N campaigns table source. Returns enriched-friendly rows so the
+// drill-down table can show platform + bid strategy without re-joining.
+export interface CampaignSpendRow {
+  campaign_id: string;
+  campaign_name: string;
+  channel: Channel;
+  objective: string;
+  bid_strategy: string;
+  ad_groups: number;
+  ads: number;
+  spend: number;
+  share: number;
+  delta?: number;
+}
+
+export function campaignSpendTable(
+  rows: EnrichedInsight[],
+  compareRows?: EnrichedInsight[],
+): CampaignSpendRow[] {
+  const build = (rs: EnrichedInsight[]): Map<string, CampaignSpendRow & { _ag: Set<string>; _ad: Set<string> }> => {
+    const m = new Map<string, CampaignSpendRow & { _ag: Set<string>; _ad: Set<string> }>();
+    let grand = 0;
+    for (const r of rs) grand += r.spend;
+    for (const r of rs) {
+      const k = `${r.channel}|${r.campaign_id}`;
+      let cur = m.get(k);
+      if (!cur) {
+        cur = {
+          campaign_id: r.campaign_id,
+          campaign_name: r.campaign_name,
+          channel: r.channel,
+          objective: r.objective,
+          bid_strategy: r.campaign_bid_strategy,
+          ad_groups: 0,
+          ads: 0,
+          spend: 0,
+          share: 0,
+          _ag: new Set(),
+          _ad: new Set(),
+        };
+        m.set(k, cur);
+      }
+      cur.spend += r.spend;
+      if (r.ad_group_id) cur._ag.add(r.ad_group_id);
+      if (r.ad_id) cur._ad.add(r.ad_id);
+    }
+    for (const cur of m.values()) {
+      cur.ad_groups = cur._ag.size;
+      cur.ads = cur._ad.size;
+      cur.share = grand > 0 ? cur.spend / grand : 0;
+    }
+    return m;
+  };
+
+  const cur = build(rows);
+  const out: CampaignSpendRow[] = Array.from(cur.values()).map(
+    ({ _ag, _ad, ...rest }) => rest,
+  );
+
+  if (compareRows) {
+    const prev = build(compareRows);
+    for (const row of out) {
+      const k = `${row.channel}|${row.campaign_id}`;
+      const p = prev.get(k);
+      row.delta = row.spend - (p?.spend || 0);
+    }
+    // Surface campaigns that spent in compare but not current.
+    for (const [k, p] of prev) {
+      if (cur.has(k)) continue;
+      const { _ag, _ad, ...rest } = p;
+      out.push({ ...rest, spend: 0, share: 0, delta: -p.spend });
+    }
+  }
+
+  return out.sort((a, b) => b.spend - a.spend);
+}

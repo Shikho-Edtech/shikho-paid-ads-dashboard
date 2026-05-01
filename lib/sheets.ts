@@ -14,6 +14,7 @@ import { google } from "googleapis";
 import type {
   Channel,
   UnifiedInsight,
+  EnrichedInsight,
   RunStatus,
   ConversionAction,
   ConversionInsightRow,
@@ -314,4 +315,160 @@ export async function getConversionInsights(): Promise<ConversionInsightRow[]> {
     cross_device_conversions: num(r["Cross Device Conversions"]),
     value_per_conversion: num(r["Value Per Conversion"]),
   })).filter((r) => r.date);
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Spend-overview lookups — entity tabs joined client-side to enrich
+// UnifiedInsight rows with optimization + ad-signal dimensions.
+// Read-only, append-only — does not change CONTRACTS §6.1 schema for
+// Raw_Insights. The columns referenced here already exist on Raw_AdSets,
+// Raw_AdGroups, Raw_Ads (Meta + Google) per the pipeline writers.
+// ─────────────────────────────────────────────────────────────────────
+
+interface MetaAdsetMeta {
+  optimization_goal: string;
+  bid_strategy: string;
+  billing_event: string;
+}
+
+interface GoogleAdGroupMeta {
+  type: string;
+  target_cpa: number;
+  target_roas: number;
+}
+
+export async function getMetaAdsetLookup(): Promise<Map<string, MetaAdsetMeta>> {
+  const rows = await readTab(metaSheetId(), "Raw_AdSets");
+  const map = new Map<string, MetaAdsetMeta>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["AdSet ID"] || "");
+    if (!id) continue;
+    map.set(id, {
+      optimization_goal: String(r["Optimization Goal"] || ""),
+      bid_strategy: String(r["Bid Strategy"] || ""),
+      billing_event: String(r["Billing Event"] || ""),
+    });
+  }
+  return map;
+}
+
+// Meta ad-level conversion type. Conversion Specs (JSON) is an array of
+// {"action.type": ["click_to_call_60s_call_end"]}-shaped objects; the
+// first action_type is what the ad is built around. Empty for ads that
+// don't carry an explicit conversion_specs.
+export async function getMetaAdSignalLookup(): Promise<Map<string, string>> {
+  const rows = await readTab(metaSheetId(), "Raw_Ads");
+  const map = new Map<string, string>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["Ad ID"] || "");
+    if (!id) continue;
+    const raw = r["Conversion Specs (JSON)"];
+    let signal = "";
+    if (typeof raw === "string" && raw.trim()) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const first = parsed[0];
+          const types = first?.["action.type"];
+          if (Array.isArray(types) && types.length > 0) {
+            signal = String(types[0]);
+          }
+        }
+      } catch {
+        signal = "";
+      }
+    }
+    map.set(id, signal);
+  }
+  return map;
+}
+
+export async function getMetaCampaignBidLookup(): Promise<Map<string, string>> {
+  const rows = await readTab(metaSheetId(), "Raw_Campaigns");
+  const map = new Map<string, string>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["Campaign ID"] || "");
+    if (!id) continue;
+    map.set(id, String(r["Bid Strategy"] || ""));
+  }
+  return map;
+}
+
+export async function getGoogleAdGroupLookup(): Promise<Map<string, GoogleAdGroupMeta>> {
+  const rows = await readTab(googleSheetId(), "Raw_AdGroups");
+  const map = new Map<string, GoogleAdGroupMeta>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["Ad Group ID"] || "");
+    if (!id) continue;
+    map.set(id, {
+      type: String(r["Type"] || ""),
+      target_cpa: num(r["Target CPA (USD)"]),
+      target_roas: num(r["Target ROAS"]),
+    });
+  }
+  return map;
+}
+
+export async function getGoogleAdSignalLookup(): Promise<Map<string, string>> {
+  const rows = await readTab(googleSheetId(), "Raw_Ads");
+  const map = new Map<string, string>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["Ad ID"] || "");
+    if (!id) continue;
+    map.set(id, String(r["Ad Type"] || ""));
+  }
+  return map;
+}
+
+export async function getGoogleCampaignBidLookup(): Promise<Map<string, string>> {
+  const rows = await readTab(googleSheetId(), "Raw_Campaigns");
+  const map = new Map<string, string>();
+  for (const r of rowsToObjects(rows)) {
+    const id = String(r["Campaign ID"] || "");
+    if (!id) continue;
+    map.set(id, String(r["Bidding Strategy Type"] || ""));
+  }
+  return map;
+}
+
+// One-shot: fetch all six lookups in parallel + the unified insights,
+// then enrich each insight row with optimization + ad_signal +
+// campaign_bid_strategy. Falls back to "(unknown)" for missing lookups
+// so charts stay stable on stale entity tabs.
+export async function getEnrichedInsights(): Promise<EnrichedInsight[]> {
+  const [
+    insights,
+    metaAdsets, metaAdSignals, metaCampBids,
+    googleAdGroups, googleAdSignals, googleCampBids,
+  ] = await Promise.all([
+    getAllInsights(),
+    getMetaAdsetLookup(),
+    getMetaAdSignalLookup(),
+    getMetaCampaignBidLookup(),
+    getGoogleAdGroupLookup(),
+    getGoogleAdSignalLookup(),
+    getGoogleCampaignBidLookup(),
+  ]);
+
+  const UNKNOWN = "(unknown)";
+
+  return insights.map((r): EnrichedInsight => {
+    if (r.channel === "meta") {
+      const adset = metaAdsets.get(r.ad_group_id);
+      return {
+        ...r,
+        campaign_bid_strategy: metaCampBids.get(r.campaign_id) || UNKNOWN,
+        optimization: adset?.optimization_goal || UNKNOWN,
+        ad_signal: metaAdSignals.get(r.ad_id) || UNKNOWN,
+      };
+    } else {
+      const ag = googleAdGroups.get(r.ad_group_id);
+      return {
+        ...r,
+        campaign_bid_strategy: googleCampBids.get(r.campaign_id) || UNKNOWN,
+        optimization: ag?.type || UNKNOWN,
+        ad_signal: googleAdSignals.get(r.ad_id) || UNKNOWN,
+      };
+    }
+  });
 }

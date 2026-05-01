@@ -15,6 +15,7 @@ import { useTransition } from "react";
 
 const ROUTES: { href: string; label: string }[] = [
   { href: "/", label: "Overview" },
+  { href: "/spend", label: "Spend" },
   { href: "/conversions", label: "Conversions" },
 ];
 
